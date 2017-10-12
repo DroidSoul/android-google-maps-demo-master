@@ -2,6 +2,7 @@ package com.example.mapdemo;
 
 import android.app.Dialog;
 import android.content.DialogInterface;
+import android.content.IntentFilter;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.Looper;
@@ -36,6 +37,7 @@ import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.maps.android.ui.IconGenerator;
+import com.parse.ParsePush;
 
 import permissions.dispatcher.NeedsPermission;
 import permissions.dispatcher.RuntimePermissions;
@@ -44,8 +46,8 @@ import static com.google.android.gms.location.LocationServices.getFusedLocationP
 
 @RuntimePermissions
 public class MapDemoActivity extends AppCompatActivity implements
-        GoogleMap.OnMapLongClickListener, GoogleMap.OnMarkerDragListener{
-
+        GoogleMap.OnMapLongClickListener, GoogleMap.OnMarkerDragListener, MarkerUpdatesReceiver.PushInterface{
+    public static final String CHANNEL_NAME = "android-2017";
     private SupportMapFragment mapFragment;
     private GoogleMap map;
     private LocationRequest mLocationRequest;
@@ -54,18 +56,25 @@ public class MapDemoActivity extends AppCompatActivity implements
     private long FASTEST_INTERVAL = 5000; /* 5 secs */
 
     private final static String KEY_LOCATION = "location";
+    PushUtilTracker pushUtilTracker;
 
     /*
      * Define a request code to send to Google Play services This code is
      * returned in Activity.onActivityResult
      */
     private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
-
+    MarkerUpdatesReceiver markerUpdatesReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.map_demo_activity);
+        ParsePush.subscribeInBackground(CHANNEL_NAME);
+        markerUpdatesReceiver = new MarkerUpdatesReceiver(this);
+        // implicit broadcast, Android O still allows doing so inside activity, fragment, or service
+        IntentFilter intentFilter = new IntentFilter("com.parse.push.intent.RECEIVE");
+        registerReceiver(markerUpdatesReceiver, intentFilter);
+        pushUtilTracker = new PushUtilTracker();
 
         if (TextUtils.isEmpty(getResources().getString(R.string.google_maps_api_key))) {
             throw new IllegalStateException("You forgot to supply a Google Maps API key");
@@ -177,6 +186,7 @@ public class MapDemoActivity extends AppCompatActivity implements
         }
     }
 
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -240,6 +250,7 @@ public class MapDemoActivity extends AppCompatActivity implements
     @Override
     public void onMapLongClick(LatLng point) {
         Toast.makeText(this, "Long Press", Toast.LENGTH_LONG).show();
+        PushTest.sendPushTest();
         showAlertDialogForPoint(point);
     }
 
@@ -270,6 +281,7 @@ public class MapDemoActivity extends AppCompatActivity implements
                                 getText().toString();
                         BitmapDescriptor icon = MapUtils.createBubble(MapDemoActivity.this, IconGenerator.STYLE_GREEN, title);
                         Marker marker = MapUtils.addMarker(map, point, title, snippet, icon);
+                        PushUtil.sendPushNotification(marker, CHANNEL_NAME);
                     }
                 });
 
@@ -286,6 +298,8 @@ public class MapDemoActivity extends AppCompatActivity implements
     @Override
     public void onMarkerDragStart(Marker marker) {
 
+
+
     }
 
     @Override
@@ -296,8 +310,22 @@ public class MapDemoActivity extends AppCompatActivity implements
     @Override
     public void onMarkerDragEnd(Marker marker) {
 
+        PushUtil.sendPushNotification(marker, CHANNEL_NAME);
+
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (markerUpdatesReceiver != null) {
+            unregisterReceiver(markerUpdatesReceiver);
+        }
+    }
+
+    @Override
+    public void onMarkerUpdate(PushRequest pushRequest) {
+        pushUtilTracker.handleMarkerUpdates(this, pushRequest, map);
+    }
 
     // Define a DialogFragment that displays the error dialog
     public static class ErrorDialogFragment extends android.support.v4.app.DialogFragment {

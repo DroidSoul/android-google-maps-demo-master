@@ -49,7 +49,7 @@ public class MapUtils {
                 .icon(icon);
         Marker marker = map.addMarker(options);
         marker.setDraggable(true);
-        return map.addMarker(options);
+        return marker;
     }
 }
 
